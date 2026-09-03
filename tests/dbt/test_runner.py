@@ -399,3 +399,36 @@ def test_extract_message_by_status_still_prefers_node_name():
 
     assert names == ["my_model"]
     assert messages == ["boom"]
+
+
+def test_handle_exception_if_needed_result_without_node_results():
+    """Failed commands returning artifacts without per-node results (e.g. `dbt docs generate`
+    returns a CatalogArtifact) must raise a CosmosDbtRunError, not an AttributeError."""
+    response = SimpleNamespace(success=False, exception=None, result=SimpleNamespace())
+
+    with pytest.raises(CosmosDbtRunError) as exc_info:
+        dbt_runner.handle_exception_if_needed(response)
+
+    err_msg = str(exc_info.value)
+    assert "carries no node results" in err_msg
+    assert "SimpleNamespace" in err_msg
+
+
+def test_handle_exception_if_needed_result_is_none():
+    """Failed commands whose result is None (e.g. `dbt deps`) must not crash on the None result."""
+    response = SimpleNamespace(success=False, exception=None, result=None)
+
+    with pytest.raises(CosmosDbtRunError) as exc_info:
+        dbt_runner.handle_exception_if_needed(response)
+
+    assert "NoneType" in str(exc_info.value)
+
+
+def test_handle_exception_if_needed_still_prefers_exception():
+    """When the failed run carries an exception, it wins over the artifact-shape fallback."""
+    response = SimpleNamespace(success=False, exception=RuntimeError("boom"), result=SimpleNamespace())
+
+    with pytest.raises(CosmosDbtRunError) as exc_info:
+        dbt_runner.handle_exception_if_needed(response)
+
+    assert "dbt invocation did not complete with unhandled error: boom" in str(exc_info.value)

@@ -159,6 +159,14 @@ def handle_exception_if_needed(result: dbtRunnerResult) -> None:
     if not result.success:
         if result.exception:
             raise CosmosDbtRunError(f"dbt invocation did not complete with unhandled error: {result.exception}")
+        elif not hasattr(result.result, "results"):
+            # Not every dbt command returns a RunExecutionResult: `dbt docs generate` yields a
+            # CatalogArtifact and `dbt deps` yields None, neither of which carries per-node results
+            # to extract an error message from.
+            raise CosmosDbtRunError(
+                f"dbt invocation completed with errors, but the result artifact "
+                f"({type(result.result).__name__}) carries no node results; check the dbt logs for details"
+            )
         else:
             node_names, node_results = extract_message_by_status(result, ["error", "fail", "runtime error"])
             error_message = "\n".join([f"{name}: {result}" for name, result in zip(node_names, node_results)])
